@@ -117,6 +117,88 @@
 // module.exports = router;
 
 // routes/gallery.js — Cloudinary image uploads (persistent)
+// const express = require('express');
+// const router = express.Router();
+// const multer = require('multer');
+// const streamifier = require('streamifier');
+// const cloudinary = require('../config/cloudinary');   // [PATCH] Cloudinary config
+// const Gallery = require('../models/Gallery');         // మీ schema ఇదే అయితే OK
+
+// // [PATCH] disk storage కాకుండా memory storage వాడుతున్నాం
+// const upload = multer({ storage: multer.memoryStorage() });
+
+// /* GET /api/gallery — అన్ని ఫోటోలు */
+// router.get('/', async (req, res) => {
+//   try {
+//     // మీ schema లో order/createdAt ఉంటే వీటి ప్రకారం సార్ట్ చేయొచ్చు
+//     const items = await Gallery.find().sort({ order: 1, createdAt: -1 });
+//     res.json(items);
+//   } catch (err) {
+//     res.status(500).json({ message: err.message || 'Failed to load gallery' });
+//   }
+// });
+
+// /* POST /api/gallery — కొత్త ఫోటో add (image/photo/file ఏ field అయినా) */
+// router.post('/', upload.any(), async (req, res) => {
+//   try {
+//     // [PATCH] ఏ పేరుతో వచ్చినా first image-like ఫైల్ ను తీసుకోండి
+//     const candidates = ['image', 'photo', 'picture', 'file', 'upload'];
+//     let file = req.file;
+//     if (!file && Array.isArray(req.files)) {
+//       file = req.files.find(f => candidates.includes(f.fieldname));
+//       // లేకపోతే మొదటి ఫైల్
+//       if (!file && req.files.length > 0) file = req.files[0];
+//     }
+//     if (!file) {
+//       return res.status(400).json({ message: "Image file is required (field: image/photo/file)." });
+//     }
+
+//     const folder = process.env.CLOUDINARY_FOLDER_GALLERY || 'bible-mining/gallery';
+
+//     // [PATCH] Cloudinaryకి streamగా ఎక్కించడం (images కాబట్టి resource_type: 'image')
+//     const result = await new Promise((resolve, reject) => {
+//       const up = cloudinary.uploader.upload_stream(
+//         { resource_type: 'image', folder },
+//         (err, r) => (err ? reject(err) : resolve(r))
+//       );
+//       streamifier.createReadStream(file.buffer).pipe(up);
+//     });
+
+//     // [PATCH] payload — మీ schema లో ఉన్న టెక్స్ట్ ఫీల్డ్స్ ని కూడా కలుపుకోండి
+//     const payload = {
+//       image_url: result.secure_url,       // ⚠️ Frontend ఈ ఫీల్డ్ ను చదవాలి
+//     };
+
+//     // Optional fields (schema లో ఉంటే సేవ్ అవుతాయి; strict అయితే ignore అవుతాయి)
+//     const textFields = ['title', 'caption', 'category', 'alt', 'tags', 'order'];
+//     textFields.forEach((f) => {
+//       if (req.body[f] != null && req.body[f] !== '') {
+//         payload[f] = f === 'order' ? Number(req.body[f]) : req.body[f];
+//       }
+//     });
+
+//     // [PATCH] Debug log (Render Logs లో చూడడానికి)
+//     console.log('[gallery:upload]', {
+//       fieldnames: (req.files || []).map(f => f.fieldname),
+//       savedUrl: payload.image_url,
+//       title: payload.title,
+//       category: payload.category,
+//       order: payload.order,
+//     });
+
+//     const doc = new Gallery(payload);
+//     const saved = await doc.save();
+
+//     res.status(201).json(saved);
+//   } catch (err) {
+//     console.error('Add gallery error:', err);
+//     res.status(400).json({ message: 'Gallery upload failed', error: String(err) });
+//   }
+// });
+
+// module.exports = router;
+
+// routes/gallery.js — Cloudinary image uploads (persistent)
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
@@ -127,18 +209,22 @@ const Gallery = require('../models/Gallery');         // మీ schema ఇదే
 // [PATCH] disk storage కాకుండా memory storage వాడుతున్నాం
 const upload = multer({ storage: multer.memoryStorage() });
 
-/* GET /api/gallery — అన్ని ఫోటోలు */
+/* ======================= GET /api/gallery ======================= */
+/* [PATCH] ఇప్పటి నుంచి array బదులుగా { items, categories } ఇచ్చుతున్నాం,
+   పాత frontend కోడ్ కూడా క్రాష్ కాకుండా ఉండడానికి. */
 router.get('/', async (req, res) => {
   try {
-    // మీ schema లో order/createdAt ఉంటే వీటి ప్రకారం సార్ట్ చేయొచ్చు
     const items = await Gallery.find().sort({ order: 1, createdAt: -1 });
-    res.json(items);
+    const categories = await Gallery.distinct('category'); // unique categories
+    res.json({ items, categories }); // [PATCH] object రూపం
   } catch (err) {
     res.status(500).json({ message: err.message || 'Failed to load gallery' });
   }
 });
+/* =============================================================== */
 
-/* POST /api/gallery — కొత్త ఫోటో add (image/photo/file ఏ field అయినా) */
+/* ============== POST /api/gallery — కొత్త ఫోటో add ============== */
+/* [PATCH] image/photo/picture/file/upload — ఏ field పేరైనా accept */
 router.post('/', upload.any(), async (req, res) => {
   try {
     // [PATCH] ఏ పేరుతో వచ్చినా first image-like ఫైల్ ను తీసుకోండి
@@ -146,8 +232,7 @@ router.post('/', upload.any(), async (req, res) => {
     let file = req.file;
     if (!file && Array.isArray(req.files)) {
       file = req.files.find(f => candidates.includes(f.fieldname));
-      // లేకపోతే మొదటి ఫైల్
-      if (!file && req.files.length > 0) file = req.files[0];
+      if (!file && req.files.length > 0) file = req.files[0]; // fallback: first
     }
     if (!file) {
       return res.status(400).json({ message: "Image file is required (field: image/photo/file)." });
@@ -166,11 +251,11 @@ router.post('/', upload.any(), async (req, res) => {
 
     // [PATCH] payload — మీ schema లో ఉన్న టెక్స్ట్ ఫీల్డ్స్ ని కూడా కలుపుకోండి
     const payload = {
-      image_url: result.secure_url,       // ⚠️ Frontend ఈ ఫీల్డ్ ను చదవాలి
+      image_url: result.secure_url, // ⚠️ Frontend ఈ ఫీల్డ్ ను చదవాలి
     };
 
     // Optional fields (schema లో ఉంటే సేవ్ అవుతాయి; strict అయితే ignore అవుతాయి)
-    const textFields = ['title', 'caption', 'category', 'alt', 'tags', 'order'];
+    const textFields = ['title', 'caption', 'description', 'category', 'alt', 'tags', 'order'];
     textFields.forEach((f) => {
       if (req.body[f] != null && req.body[f] !== '') {
         payload[f] = f === 'order' ? Number(req.body[f]) : req.body[f];
