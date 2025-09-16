@@ -131,8 +131,94 @@
 // NOTE: ఈ వెర్షన్‌లో uploads/songs డైరెక్టరీ ఆటో-క్రియేట్ అవుతుంది
 //       మరియు '/uploads' ని absolute path తో serve చేస్తుంది.
 
+// const path = require('path');
+// const fs = require('fs');                     // [CHANGE] uploads ఫోల్డర్లు సృష్టించడానికి
+// const express = require('express');
+// const mongoose = require('mongoose');
+// const cors = require('cors');
+// const dotenv = require('dotenv');
+
+// dotenv.config();
+
+// const app = express();
+// const PORT = process.env.PORT || 5000;
+
+// /* ---------------- CORS ---------------- */
+// // [WHY] Netlify + Localhost రెండూ నుంచి కాల్స్ రావాలి
+// app.use(cors({
+//   origin: process.env.CORS_ORIGIN || '*',
+//   methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+//   credentials: true,
+// }));
+
+// app.use(express.json());
+
+// /* ---------------- Uploads bootstrap ---------------- */
+// // [CHANGE] Render లో ENOENT రాకుండా uploads రూట్ + songs సబ్‌ఫోల్డర్ ని ఆటోగా సృష్టిస్తున్నాం
+// const UPLOAD_ROOT = path.join(__dirname, 'uploads');
+// ['', 'songs' /* తరువాత gallery, logo, homepage, sermons వంటివి add చేస్కోవచ్చు */]
+//   .forEach((sub) => {
+//     try { fs.mkdirSync(path.join(UPLOAD_ROOT, sub), { recursive: true }); } catch {}
+//   });
+
+// // [CHANGE] absolute path తో static serve (CWD issues నివారించడానికి)
+// app.use('/uploads', express.static(UPLOAD_ROOT));
+
+// /* ---------------- Mongo ---------------- */
+// // [WHY] Atlas URL .env లో MONGODB_URI గా వస్తుంది; లేకపోతే local
+// const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/biblemining';
+// mongoose.connect(mongoUri)
+//   .then(() => console.log('✅ MongoDB connected:', mongoUri.includes('mongodb+srv://') ? 'Atlas' : 'Local'))
+//   .catch(err => {
+//     console.error('❌ MongoDB connection error:', err?.message || err);
+//     process.exit(1);
+//   });
+
+// /* ---------------- Routes ---------------- */
+// // [CHANGE] Linux/Render లో case-sensitive కాబట్టి Songs.js ని 'Songs' గా require చేయాలి
+// const songsRouter = require('./routes/Songs');
+// app.use('/api/songs', songsRouter);
+
+// const sermonsRouter = require('./routes/sermons');
+// app.use('/api/sermons', sermonsRouter);
+
+// const galleryRouter = require('./routes/gallery');
+// app.use('/api/gallery', galleryRouter);
+
+// const videosRouter = require('./routes/videos');
+// app.use('/api/videos', videosRouter);
+
+// const contactRouter = require('./routes/contact');
+// app.use('/api/contact', contactRouter);
+
+// const homepageRouter = require('./routes/homepage');
+// app.use('/api/homepage', homepageRouter);
+
+// const logoRouter = require('./routes/logo');
+// app.use('/api/logo', logoRouter);
+
+// const blogRouter = require('./routes/blog');
+// app.use('/api/blog', blogRouter);
+
+// const aboutRouter = require('./routes/about');
+// app.use('/api/about', aboutRouter);
+
+// const authRouter = require('./routes/auth');
+// app.use('/api/auth', authRouter);
+
+// /* ---------------- Health ---------------- */
+// app.get('/health', (_req, res) => {
+//   res.json({ ok: true, uptime: process.uptime() });
+// });
+
+// app.listen(PORT, () => {
+//   console.log(`🚀 Server running on port ${PORT}`);
+// });
+
+// server.js
+
 const path = require('path');
-const fs = require('fs');                     // [CHANGE] uploads ఫోల్డర్లు సృష్టించడానికి
+const fs = require('fs'); // [PATCH] uploads ఫోల్డర్లు సృష్టించడానికి
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -143,25 +229,37 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-/* ---------------- CORS ---------------- */
-// [WHY] Netlify + Localhost రెండూ నుంచి కాల్స్ రావాలి
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
-  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-  credentials: true,
-}));
-
+/* ---------------- Express base ---------------- */
+app.set('trust proxy', true); // [PATCH] Render/Proxy వెనుక protocol సరిగా రావడానికి
 app.use(express.json());
 
+/* ---------------- CORS (comma-separated origins supported) ---------------- */
+// [PATCH] Netlify + Localhost రెండూ నుంచి కాల్స్ రావాలి; comma list ని array గా treat చేస్తాం
+const rawOrigins = process.env.CORS_ORIGIN || '*';
+const allowList = rawOrigins.split(',').map(s => s.trim()).filter(Boolean);
+
+const corsOptions = {
+  origin: allowList.includes('*')
+    ? true
+    : function (origin, cb) {
+        // same-origin/SSR/no-origin requests కూడా allow చేయాలి
+        if (!origin) return cb(null, true);
+        cb(null, allowList.includes(origin));
+      },
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  credentials: true,
+};
+app.use(cors(corsOptions));
+
 /* ---------------- Uploads bootstrap ---------------- */
-// [CHANGE] Render లో ENOENT రాకుండా uploads రూట్ + songs సబ్‌ఫోల్డర్ ని ఆటోగా సృష్టిస్తున్నాం
+// [PATCH] Render లో ENOENT రాకుండా uploads రూట్ + songs సబ్‌ఫోల్డర్ ని ఆటోగా సృష్టించడం
 const UPLOAD_ROOT = path.join(__dirname, 'uploads');
-['', 'songs' /* తరువాత gallery, logo, homepage, sermons వంటివి add చేస్కోవచ్చు */]
+['', 'songs' /* తరువాత gallery, logo, homepage, sermons వంటివి add చేసుకోవచ్చు */]
   .forEach((sub) => {
     try { fs.mkdirSync(path.join(UPLOAD_ROOT, sub), { recursive: true }); } catch {}
   });
 
-// [CHANGE] absolute path తో static serve (CWD issues నివారించడానికి)
+// [PATCH] absolute path తో static serve (CWD issues నివారించడానికి)
 app.use('/uploads', express.static(UPLOAD_ROOT));
 
 /* ---------------- Mongo ---------------- */
@@ -175,7 +273,7 @@ mongoose.connect(mongoUri)
   });
 
 /* ---------------- Routes ---------------- */
-// [CHANGE] Linux/Render లో case-sensitive కాబట్టి Songs.js ని 'Songs' గా require చేయాలి
+// [PATCH] Linux/Render లో case-sensitive కాబట్టి Songs.js ని 'Songs' గా require చేయాలి
 const songsRouter = require('./routes/Songs');
 app.use('/api/songs', songsRouter);
 
@@ -209,6 +307,19 @@ app.use('/api/auth', authRouter);
 /* ---------------- Health ---------------- */
 app.get('/health', (_req, res) => {
   res.json({ ok: true, uptime: process.uptime() });
+});
+
+/* ---------------- DEBUG (uploads on disk) ---------------- */
+// [PATCH] — తాత్కాలికంగా: సర్వర్ డిస్క్‌లో uploads/songs లోని ఫైళ్ల లిస్ట్ చూడటానికి
+app.get('/debug/uploads/songs', (req, res) => {
+  try {
+    const dir = path.join(__dirname, 'uploads', 'songs');
+    const exists = fs.existsSync(dir);
+    const files = exists ? fs.readdirSync(dir) : [];
+    res.json({ dir, exists, files });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
 });
 
 app.listen(PORT, () => {
